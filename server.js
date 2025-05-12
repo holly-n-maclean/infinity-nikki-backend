@@ -4,6 +4,7 @@ const postRoutes = require('./routes/posts'); // import post routes
 const app = express();
 const authRoutes = require('./routes/auth'); // import auth routes
 require('dotenv').config();
+const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
@@ -21,3 +22,11 @@ mongoose.connect(uri, {
 })
   .then(() => console.log('✅ MongoDB connected'))
   .catch((err) => console.error('❌ MongoDB connection error:', err));
+
+
+
+  app.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT}`);
+  });
+
+ 

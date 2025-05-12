@@ -12,7 +12,7 @@ app.use('/api/posts', postRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/auth', authRoutes); // use auth routes
 
-mongoose.connect('mongodb://localhost:27017/blog', {
+mongoose.connect('process.env.MONGO_URI', {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 }).then(() => {

@@ -12,12 +12,13 @@ app.use('/api/posts', postRoutes);
 app.use('/uploads', express.static('uploads'));
 app.use('/api/auth', authRoutes); // use auth routes
 
-mongoose.connect('process.env.MONGO_URI', {
+const mongoose = require('mongoose');
+
+const uri = process.env.MONGO_URI;
+
+mongoose.connect(uri, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-}).then(() => {
-    console.log('Connected to MongoDB');
-    app.listen(5000, () => {
-        console.log('Server is running on port 5000');
-      });
-}).catch(err => console.error('MongoDB connection error:', err));
+})
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch((err) => console.error('❌ MongoDB connection error:', err));

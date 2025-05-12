@@ -1,25 +1,23 @@
 const express = require('express');
 const router = express.Router();
 console.log('✅ posts.js router loaded');
-const multer = require('multer'); // handle file uploads
-const path = require('path'); // handle file paths
-const Post = require('../models/Post'); // import Post model
+const multer = require('multer');
+const path = require('path');
+const jwt = require('jsonwebtoken');
+const Post = require('../models/Post');
 
-//file storage configuration
+// File storage configuration
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, 'uploads/'); // save files to uploads directory
-    },
-    filename: function (req, file, cb) {
-        cb(null, Date.now() + path.extname(file.originalname)); // save files with unique names
-    }
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/');
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname));
+  }
 });
-
-
 const upload = multer({ storage });
 
-const jwt = require('jsonwebtoken'); // import jsonwebtoken for token verification
-
+// Middleware to authenticate JWT
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ message: 'Missing token' });
@@ -32,133 +30,129 @@ function authenticate(req, res, next) {
   });
 }
 
+// Test route
 router.get('/test', (req, res) => {
-    res.send('Posts route is working!');
-  });
+  res.send('Posts route is working!');
+});
 
-//GET all posts
+// Get posts by tag
+router.get('/tag/:tag', async (req, res) => {
+  const { tag } = req.params;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 5;
+
+  try {
+    const query = { tags: tag };
+    const total = await Post.countDocuments(query);
+    const posts = await Post.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    res.json({ posts, total, page, pages: Math.ceil(total / limit) });
+  } catch (error) {
+    console.error('Error fetching paginated tag posts:', error);
+    res.status(500).json({ error: 'Error fetching posts by tag' });
+  }
+});
+
+// Upload image
+router.post('/upload', authenticate, upload.single('image'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  res.json({ filename: req.file.filename });
+});
+
+// Create a new post
+router.post('/', authenticate, upload.single('image'), async (req, res) => {
+  const { title, content, images, tags } = req.body;
+  const username = req.user.username;
+
+  try {
+    const newPost = new Post({
+      title,
+      content,
+      images,
+      tags: Array.isArray(tags) ? tags : [],
+      author: username,
+    });
+
+    const savedPost = await newPost.save();
+    res.json(savedPost);
+  } catch (err) {
+    res.status(500).json({ message: 'Error creating post' });
+  }
+});
+
+// Get all posts (paginated)
 router.get('/', async (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 5;
 
   try {
-      const total = await Post.countDocuments();
-      const posts = await Post.find()
-          .sort({ createdAt: -1 })
-          .skip((page - 1) * limit)
-          .limit(limit);
+    const total = await Post.countDocuments();
+    const posts = await Post.find()
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
-      res.json({
-          posts,
-          total,
-          page,
-          pages: Math.ceil(total / limit)
-      });
+    res.json({
+      posts,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+    });
   } catch (error) {
-      res.status(500).json({ error: 'Error fetching posts' });
+    res.status(500).json({ error: 'Error fetching posts' });
   }
 });
 
-// POST a new post
-router.post('/', authenticate, upload.single('image'), async (req, res) => {
-    const { title,  content, images, tags } = req.body;
-    const username = req.user.username; // get username from token
-
-    try {
-        const newPost = new Post({
-            title,
-            content,
-            images,
-            tags: Array.isArray(tags) ? tags : [],
-            author: username,
-        });
-
-    
-        const savedPost = await newPost.save(); // save post to database
-        res.json(savedPost); // send saved post to client
-    } catch (err) {
-        res.status(500).json({ message: 'Error creating post' });
-    }    
-});
-
-// GET posts by tag
-router.get('/tag/:tag', async (req, res) => {
-    const { tag } = req.params; // get tag from request params
-    const page = parseInt(req.query.page) || 1; // get page number from query params, default to 1
-    const limit = parseInt(req.query.limit) || 5; // get limit from query params, default to 5
-
-    try {
-      const query = { tags: tag }; // query to find posts by tag
-        const total = await Post.countDocuments(query); // count total posts matching the query
-        const posts = await Post.find(query)
-        .sort({ createdAt: -1 }) // find posts, sort by createdAt in descending order
-        .skip((page - 1) * limit) // skip posts for pagination
-        .limit(limit); // limit number of posts returned
-
-        res.json({ posts, total, page, pages: Math.ceil(total / limit)}); 
-      } catch (error) {
-        console.error('Error fetching paginated tag posts:', error);
-        res.status(500).json({ error: 'Error fetching posts by tag' });
-      }
-});
-
-// GET a single post by ID
+// Get a single post by ID — this MUST be last!
 router.get('/:id', async (req, res) => {
-
-    try {
-        const post = await Post.findById(req.params.id); // find post by id
-        if (!post) return res.status(404).json({ error: 'Post not found' });
-        res.json(post); // send post to client
-    } catch (error) {
-        res.status(500).json({ error: 'Error fetching post' });
-    }
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    res.json(post);
+  } catch (error) {
+    res.status(500).json({ error: 'Error fetching post' });
+  }
 });
 
-// UPDATE a post by ID
+// Update a post by ID
 router.put('/:id', authenticate, async (req, res) => {
-    const { title, content, tags } = req.body;
-  
-    try {
-      const updatedPost = await Post.findByIdAndUpdate(
-        req.params.id,
-        {
-          title,
-          content,
-          tags: Array.isArray(tags) ? tags : [], // tags need to be an array
-        },
-        { new: true } // Return the updated document
-      );
-  
-      if (!updatedPost) return res.status(404).json({ error: 'Post not found' });
-      res.json(updatedPost);
-    } catch (err) {
-      console.error('Error updating post:', err);
-      res.status(500).json({ error: 'Failed to update post' });
-    }
-  });
+  const { title, content, tags } = req.body;
 
-  // Upload image
-  router.post('/upload', authenticate, upload.single('image'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-    }
+  try {
+    const updatedPost = await Post.findByIdAndUpdate(
+      req.params.id,
+      {
+        title,
+        content,
+        tags: Array.isArray(tags) ? tags : [],
+      },
+      { new: true }
+    );
 
-    res.json({ filename: req.file.filename });
-  });
+    if (!updatedPost) return res.status(404).json({ error: 'Post not found' });
+    res.json(updatedPost);
+  } catch (err) {
+    console.error('Error updating post:', err);
+    res.status(500).json({ error: 'Failed to update post' });
+  }
+});
 
-  
-  // DELETE a post by ID
-  router.delete('/:id', authenticate, async (req, res) => {
-    console.log('Received DELETE request for ID:', req.params.id);
-    try {
-      const deleted = await Post.findByIdAndDelete(req.params.id);
-      if (!deleted) return res.status(404).json({ error: 'Post not found' });
-      res.json({ message: 'Post successfully deleted' });
-    } catch (error) {
-      console.error('Error deleting post:', error);
-      res.status(500).json({ error: 'Could not delete post' });
-    }
-  });
+// Delete a post by ID
+router.delete('/:id', authenticate, async (req, res) => {
+  console.log('Received DELETE request for ID:', req.params.id);
+  try {
+    const deleted = await Post.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Post not found' });
+    res.json({ message: 'Post successfully deleted' });
+  } catch (error) {
+    console.error('Error deleting post:', error);
+    res.status(500).json({ error: 'Could not delete post' });
+  }
+});
 
-
-module.exports = router; // export router
+module.exports = router;
